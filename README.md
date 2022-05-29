@@ -4,7 +4,7 @@ Below is a quick example of using our codebase for training CNN models with mixe
 
 ```python
 import torchvision, torch, opacus
-from private_cnns import PrivacyEngine
+from private_CNN import PrivacyEngine
 
 model = torchvision.models.resnet18()
 
@@ -33,7 +33,7 @@ A special use of our privacy engine is to use the gradient accumulation. This is
 
 ```python
 import torchvision, torch, timm
-from private_cnns import PrivacyEngine
+from private_CNN import PrivacyEngine
 
 gradient_accumulation_steps = 10  
 
