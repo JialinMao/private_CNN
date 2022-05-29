@@ -54,7 +54,7 @@ for i, batch in enumerate(dataloader):
         optimizer.virtual_step(loss=loss)
 ```
 # Citation
-Please cite our if you use private_CNN in your papers, as follows:
+Please cite our paper if you use private_CNN in your papers, as follows:
 ```
 @article{bu2022scalable,
   title={Scalable and Efficient Training of Large Convolutional Neural Networks with Differential Privacy},
