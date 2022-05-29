@@ -53,3 +53,12 @@ for i, batch in enumerate(dataloader):
     else:
         optimizer.virtual_step(loss=loss)
 ```
+# Citation:
+```
+@article{bu2022scalable,
+  title={Scalable and Efficient Training of Large Convolutional Neural Networks with Differential Privacy},
+  author={Bu, Zhiqi and Mao, Jialin and Xu, Shiyun},
+  journal={arXiv preprint arXiv:2205.10683},
+  year={2022}
+}
+```
