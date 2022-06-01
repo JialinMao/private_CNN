@@ -20,7 +20,8 @@ from . import misc
 # from . import transformers_support
 from .accounting import gdp_accounting, rdp_accounting
 
-DEFAULT_ALPHAS = tuple(1 + x / 10.0 for x in range(1, 100)) + tuple(range(12, 64))
+DEFAULT_ALPHAS = tuple(1 + x / 10.0 for x in range(1, 100)
+                       ) + tuple(range(12, 64))
 
 
 class PrivacyEngine(object):
@@ -50,8 +51,8 @@ class PrivacyEngine(object):
         named_params: Optional[Sequence] = None,
         fp16: bool = False,
         numerical_stability_constant=1e-6,
-        ghost_clipping: bool = False,
-        mixed: bool = False,
+        ghost_clipping: bool = True,
+        mixed: bool = True,
         # Accounting specifics.
         accounting_mode="rdp_cks",
         eps_error=0.05,
@@ -78,6 +79,7 @@ class PrivacyEngine(object):
             fp16: Set this to True when training with mixed-precision.
             numerical_stability_constant: Small constant to avoid division by 0 when clipping.
             ghost_clipping: Set this to True to use memory efficient ghost clipping.
+            mixed: Set this to True to use mixed ghost clipping, which outperforms ghost clipping in memory and usually in time.
             accounting_mode: The method of accounting privacy. One of (`rdp`, `gdp`, `rdp_cks`, `glw`, `all`).
                 Meanings of shorthands:
                     - rdp: The method in "Rényi Differential Privacy of the Sampled Gaussian Mechanism".
@@ -102,7 +104,8 @@ class PrivacyEngine(object):
         if accounting_mode not in ('rdp', 'gdp', 'rdp_cks', 'glw', 'all',):
             raise ValueError(f"Unknown accounting mode: {accounting_mode}")
         if epochs <= 0.0:
-            raise ValueError(f"Number of training epochs cannot be non-positive, but found epochs={epochs}")
+            raise ValueError(
+                f"Number of training epochs cannot be non-positive, but found epochs={epochs}")
 
         # Privacy parameters.
         sample_rate = batch_size / sample_size
@@ -124,7 +127,8 @@ class PrivacyEngine(object):
             if accounting_mode == "rdp":
                 noise_multiplier = get_sigma_from_rdp(**kwargs_for_get_sigma)
             elif accounting_mode == "rdp_cks":
-                noise_multiplier = get_sigma_from_rdp_cks(**kwargs_for_get_sigma)
+                noise_multiplier = get_sigma_from_rdp_cks(
+                    **kwargs_for_get_sigma)
             elif accounting_mode == "glw":
                 noise_multiplier = get_sigma_from_glw(**kwargs_for_get_sigma)
             else:
@@ -166,7 +170,8 @@ class PrivacyEngine(object):
             self.named_params = named_params
         self.num_params = sum(param.numel() for _, param in self.named_params)
 
-        self._locked = False  # Lock the part where noisy gradients is created (in `self.step`) if True.
+        # Lock the part where noisy gradients is created (in `self.step`) if True.
+        self._locked = False
         self.fp16 = fp16
         self.numerical_stability_constant = numerical_stability_constant
         self.ghost_clipping = ghost_clipping
@@ -174,7 +179,8 @@ class PrivacyEngine(object):
         if ghost_clipping:
             if fp16:
                 # TODO: Make ghost clipping work with mixed-precision.
-                raise NotImplementedError("Ghost clipping doesn't support mixed-precision.")
+                raise NotImplementedError(
+                    "Ghost clipping doesn't support mixed-precision.")
             # Prepare for first backward in ghost clipping.
             if self.mixed:
                 autograd_grad_sample.set_hooks_mode(f"ghost_norm_mixed")
@@ -190,7 +196,8 @@ class PrivacyEngine(object):
         self._locked = False
 
     def attach(self, optimizer):
-        autograd_grad_sample.add_hooks(model=self.module, batch_first=True, loss_reduction="sum", fp16=self.fp16)
+        autograd_grad_sample.add_hooks(
+            model=self.module, batch_first=True, loss_reduction="sum", fp16=self.fp16)
 
         # Override zero grad.
         def dp_zero_grad(_self, *args, **kwargs):
@@ -202,7 +209,8 @@ class PrivacyEngine(object):
 
             _self.privacy_engine.step(**kwargs)
             _self.original_step(closure=closure)
-            _self.privacy_engine.unlock()  # Only enable creating new grads once parameters are updated.
+            # Only enable creating new grads once parameters are updated.
+            _self.privacy_engine.unlock()
             _self.privacy_engine.steps += 1
 
         def virtual_step(_self, **kwargs):
@@ -225,8 +233,10 @@ class PrivacyEngine(object):
         optimizer.virtual_step = types.MethodType(virtual_step, optimizer)
 
         # Make getting info easier.
-        optimizer.get_privacy_spent = types.MethodType(get_privacy_spent, optimizer)
-        optimizer.get_training_stats = types.MethodType(get_training_stats, optimizer)
+        optimizer.get_privacy_spent = types.MethodType(
+            get_privacy_spent, optimizer)
+        optimizer.get_training_stats = types.MethodType(
+            get_training_stats, optimizer)
 
         self.module.privacy_engine = self
 
@@ -250,7 +260,8 @@ class PrivacyEngine(object):
 
         module = self.module
         autograd_grad_sample.remove_hooks(module)
-        autograd_grad_sample.set_hooks_mode("default")  # This is super important when there are multiple attaches!
+        # This is super important when there are multiple attaches!
+        autograd_grad_sample.set_hooks_mode("default")
         module.zero_grad(skip_grad=True)
         module.zero_grad = module.original_zero_grad
         delattr(module, "original_zero_grad")
@@ -292,13 +303,16 @@ class PrivacyEngine(object):
             param.grad /= self.batch_size
 
         if self.record_snr and noises:
-            self.signal, self.noise = tuple(torch.stack(lst).norm(2).item() for lst in (signals, noises))
-            self.noise_limit = math.sqrt(self.num_params) * self.noise_multiplier * self.max_grad_norm
+            self.signal, self.noise = tuple(torch.stack(
+                lst).norm(2).item() for lst in (signals, noises))
+            self.noise_limit = math.sqrt(
+                self.num_params) * self.noise_multiplier * self.max_grad_norm
             self.snr = self.signal / self.noise
         else:
             self.snr = math.inf  # Undefined!
 
-        self.lock()  # Make creating new gradients impossible, unless optimizer.step is called.
+        # Make creating new gradients impossible, unless optimizer.step is called.
+        self.lock()
 
     @torch.no_grad()
     def _ghost_virtual_step(self, loss: torch.Tensor):
@@ -321,7 +335,8 @@ class PrivacyEngine(object):
     def _ghost_helper(self, loss: torch.Tensor):
         """Given per-example losses, do the double backward thing."""
         if loss.dim() != 1:
-            raise ValueError(f"Expected `loss` to be a the per-example loss 1-D tensor.")
+            raise ValueError(
+                f"Expected `loss` to be a the per-example loss 1-D tensor.")
 
         first_loss = loss.sum()
         first_loss.backward(retain_graph=True)
@@ -347,11 +362,12 @@ class PrivacyEngine(object):
 
     def get_norm_sample(self):
         """Get per-example norms."""
-        for name,param in self.named_params:
-          if hasattr(param,'norm_sample')==False:
+        for name, param in self.named_params:
+          if hasattr(param, 'norm_sample') == False:
             print(name)
 
-        norm_sample = torch.stack([param.norm_sample for name, param in self.named_params], dim=0).norm(2, dim=0)
+        norm_sample = torch.stack(
+            [param.norm_sample for name, param in self.named_params], dim=0).norm(2, dim=0)
         return norm_sample
 
     def get_coef_sample(self):
@@ -402,7 +418,8 @@ class PrivacyEngine(object):
             logging.warning("Attempted to step, but the engine is on lock.")
             return
 
-        norm_sample, coef_sample = self._accumulate_summed_grad(loss=loss, scale=scale)
+        norm_sample, coef_sample = self._accumulate_summed_grad(
+            loss=loss, scale=scale)
         # Collect stats for debugging.
         self.max_clip = coef_sample.max().item()
         self.min_clip = coef_sample.min().item()
@@ -411,7 +428,8 @@ class PrivacyEngine(object):
         # Add noise and scale by inverse batch size.
         signals, noises = [], []
         for name, param in self.named_params:
-            if hasattr(param, 'summed_grad'):  # Ultra important to override `.grad`.
+            # Ultra important to override `.grad`.
+            if hasattr(param, 'summed_grad'):
                 param.grad = param.summed_grad.to(param.dtype)
             else:
                 logging.fatal(
@@ -439,13 +457,16 @@ class PrivacyEngine(object):
             param.grad /= self.batch_size
 
         if self.record_snr and noises:
-            self.signal, self.noise = tuple(torch.stack(lst).norm(2).item() for lst in (signals, noises))
-            self.noise_limit = math.sqrt(self.num_params) * self.noise_multiplier * self.max_grad_norm
+            self.signal, self.noise = tuple(torch.stack(
+                lst).norm(2).item() for lst in (signals, noises))
+            self.noise_limit = math.sqrt(
+                self.num_params) * self.noise_multiplier * self.max_grad_norm
             self.snr = self.signal / self.noise
         else:
             self.snr = math.inf  # Undefined!
 
-        self.lock()  # Make creating new gradients impossible, unless optimizer.step is called.
+        # Make creating new gradients impossible, unless optimizer.step is called.
+        self.lock()
 
     def zero_grad(self, skip_grad=False):
         for name, param in self.named_params:
@@ -474,7 +495,8 @@ class PrivacyEngine(object):
     def _accumulate_summed_grad(self, loss, scale=1.):
         """Accumulate signal by summing clipped gradients."""
         if loss.dim() != 1:
-            raise ValueError(f"Expected `loss` to be a the per-example loss 1-D tensor.")
+            raise ValueError(
+                f"Expected `loss` to be a the per-example loss 1-D tensor.")
         with torch.enable_grad():
             loss.sum(dim=0).backward()
 
@@ -519,13 +541,15 @@ class PrivacyEngine(object):
             raise runtime_error
 
         coef_sample = torch.clamp_max(
-            self.max_grad_norm * scale / (norm_sample + self.numerical_stability_constant), 1.
+            self.max_grad_norm * scale / (norm_sample +
+                                          self.numerical_stability_constant), 1.
         )
         for name, param in self.named_params:
             if not hasattr(param, 'summed_grad'):
                 param.summed_grad = 0.
             current_device = param.grad_sample.device
-            param.summed_grad += torch.einsum("i,i...->...", coef_sample.to(current_device), param.grad_sample)
+            param.summed_grad += torch.einsum("i,i...->...",
+                                              coef_sample.to(current_device), param.grad_sample)
         return norm_sample, coef_sample
 
     def get_privacy_spent(self, steps=None, accounting_mode=None, lenient=False) -> Dict:
@@ -550,7 +574,8 @@ class PrivacyEngine(object):
                 privacy_results['eps_rdp_opacus'] = eps_rdp
                 privacy_results['alpha_rdp_opacus'] = alpha_rdp
             except Exception as err:
-                logging.fatal("RDP accounting failed! Double check privacy parameters.")
+                logging.fatal(
+                    "RDP accounting failed! Double check privacy parameters.")
                 if not lenient:
                     raise err
 
@@ -560,7 +585,8 @@ class PrivacyEngine(object):
                 privacy_results['eps_gdp'] = eps_gdp
                 privacy_results['mu_gdp'] = mu_gdp
             except Exception as err:
-                logging.fatal("GDP accounting failed! Double check privacy parameters.")
+                logging.fatal(
+                    "GDP accounting failed! Double check privacy parameters.")
                 if not lenient:
                     raise err
 
@@ -774,7 +800,8 @@ def get_sigma_from_glw(
             eps_error=eps_error,
             max_compositions=steps,
         )
-        eps_low, eps_estimate, eps_upper = accountant.compute_epsilon(num_compositions=steps)
+        eps_low, eps_estimate, eps_upper = accountant.compute_epsilon(
+            num_compositions=steps)
         return eps_upper  # Be conservative.
 
     return _get_sigma_with_target_epsilon(
@@ -874,8 +901,10 @@ def _compute_eps_cks(orders, rdp, delta):
     # Also appears in https://arxiv.org/abs/2001.05990 Equation 20 (in v1).
     eps_vec = []
     for (a, r) in zip(orders_vec, rdp_vec):
-        if a < 1: raise ValueError("Renyi divergence order must be >=1.")
-        if r < 0: raise ValueError("Renyi divergence must be >=0.")
+        if a < 1:
+            raise ValueError("Renyi divergence order must be >=1.")
+        if r < 0:
+            raise ValueError("Renyi divergence must be >=0.")
 
         if delta ** 2 + math.expm1(-r) >= 0:
             # In this case, we can simply bound via KL divergence:
@@ -964,5 +993,6 @@ def _eps_from_glw(
         eps_error=eps_error,
         max_compositions=steps
     )
-    eps_low, eps_estimate, eps_upper = accountant.compute_epsilon(num_compositions=steps)
+    eps_low, eps_estimate, eps_upper = accountant.compute_epsilon(
+        num_compositions=steps)
     return dict(eps_low=eps_low, eps_estimate=eps_estimate, eps_upper=eps_upper)
